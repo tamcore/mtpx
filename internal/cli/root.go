@@ -22,6 +22,7 @@ func NewRootCmd(version, commit string, bk backend.Backend) *cobra.Command {
 		newListCmd(bk),
 		newPullCmd(bk),
 		newPushCmd(bk),
+		newDeleteCmd(bk),
 	)
 	return root
 }

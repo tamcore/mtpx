@@ -9,13 +9,20 @@ import (
 )
 
 // runCmd builds the root command with bk, runs it with args, and returns the
-// combined output.
+// combined output. Standard input is empty.
 func runCmd(t *testing.T, bk backend.Backend, args ...string) (string, error) {
+	t.Helper()
+	return runCmdIn(t, bk, "", args...)
+}
+
+// runCmdIn is like runCmd but feeds stdin from input.
+func runCmdIn(t *testing.T, bk backend.Backend, input string, args ...string) (string, error) {
 	t.Helper()
 	root := NewRootCmd("1.2.3", "abc123", bk)
 	buf := &bytes.Buffer{}
 	root.SetOut(buf)
 	root.SetErr(buf)
+	root.SetIn(strings.NewReader(input))
 	root.SetArgs(args)
 	err := root.Execute()
 	return buf.String(), err
