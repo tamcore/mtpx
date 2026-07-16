@@ -12,7 +12,7 @@ import (
 )
 
 func deleteBackend() *backend.FakeBackend {
-	return &backend.FakeBackend{Objects: []backend.Object{
+	return &backend.FakeBackend{Devices: testDev(), Objects: []backend.Object{
 		{ID: 1, Path: "GARMIN", Name: "GARMIN", IsDir: true},
 		{ID: 2, Path: "GARMIN/Activity", Name: "Activity", IsDir: true},
 		{ID: 3, Path: "GARMIN/Activity/a.fit", Name: "a.fit"},
@@ -95,7 +95,7 @@ func TestDeleteDirectory(t *testing.T) {
 }
 
 func TestDeleteListError(t *testing.T) {
-	bk := &backend.FakeBackend{ListErr: errors.New("no device")}
+	bk := &backend.FakeBackend{Devices: testDev(), ListErr: errors.New("read error")}
 	if _, err := runCmd(t, bk, "delete", "-y", "x"); err == nil {
 		t.Fatal("want list error")
 	}

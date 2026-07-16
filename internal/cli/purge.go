@@ -29,6 +29,9 @@ func newPurgeCmd(bk backend.Backend) *cobra.Command {
 			"Use --backup to copy the files to local disk before deleting them.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireDevice(cmd, bk); err != nil {
+				return err
+			}
 			return runPurge(cmd.Context(), cmd.OutOrStdout(), cmd.InOrStdin(), bk,
 				folders, backupDir, dryRun, yes)
 		},

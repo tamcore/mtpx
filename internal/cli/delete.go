@@ -19,6 +19,9 @@ func newDeleteCmd(bk backend.Backend) *cobra.Command {
 		Short:   "Delete one or more files from the device",
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireDevice(cmd, bk); err != nil {
+				return err
+			}
 			return runDelete(cmd.Context(), cmd.OutOrStdout(), cmd.InOrStdin(), bk, args, yes, dryRun)
 		},
 	}

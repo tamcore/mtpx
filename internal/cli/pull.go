@@ -19,6 +19,9 @@ func newPullCmd(bk backend.Backend) *cobra.Command {
 		Short: "Copy a file from the device to local disk",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireDevice(cmd, bk); err != nil {
+				return err
+			}
 			return runPull(cmd.Context(), cmd.OutOrStdout(), bk, args[0], args[1])
 		},
 	}

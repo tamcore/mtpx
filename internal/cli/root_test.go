@@ -49,7 +49,7 @@ func TestRootLaunchesTUI(t *testing.T) {
 		gotDest = dest
 		return nil
 	}
-	root := NewRootCmd("v", "c", &backend.FakeBackend{}, launch)
+	root := NewRootCmd("v", "c", &backend.FakeBackend{Devices: testDev()}, launch)
 	root.SetOut(&bytes.Buffer{})
 	root.SetErr(&bytes.Buffer{})
 	root.SetArgs([]string{})
@@ -70,7 +70,7 @@ func TestRootDestFlag(t *testing.T) {
 		gotDest = dest
 		return nil
 	}
-	root := NewRootCmd("v", "c", &backend.FakeBackend{}, launch)
+	root := NewRootCmd("v", "c", &backend.FakeBackend{Devices: testDev()}, launch)
 	root.SetOut(&bytes.Buffer{})
 	root.SetErr(&bytes.Buffer{})
 	root.SetArgs([]string{"--dest", "/tmp/pulls"})

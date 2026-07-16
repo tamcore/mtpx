@@ -25,11 +25,16 @@ func NewRootCmd(version, commit string, bk backend.Backend, launch Launcher) *co
 		Version:      fmt.Sprintf("%s (%s)", version, commit),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := requireDevice(cmd, bk); err != nil {
+				return err
+			}
 			return launch(cmd.Context(), bk, dest)
 		},
 	}
 	root.PersistentFlags().StringVar(&dest, "dest", ".",
 		"destination directory for files pulled in the TUI")
+	root.PersistentFlags().Duration("wait", 0,
+		"wait up to this long for a device to appear (e.g. 30s); 0 fails immediately")
 	root.AddCommand(
 		newDevicesCmd(bk),
 		newListCmd(bk),

@@ -15,6 +15,7 @@ import (
 
 func purgeBackend() *backend.FakeBackend {
 	return &backend.FakeBackend{
+		Devices: testDev(),
 		Objects: []backend.Object{
 			{ID: 1, Path: "GARMIN", Name: "GARMIN", IsDir: true},
 			{ID: 2, Path: "GARMIN/Activity", Name: "Activity", IsDir: true},
@@ -187,7 +188,7 @@ func TestPurgeFolderNotFound(t *testing.T) {
 }
 
 func TestPurgeListError(t *testing.T) {
-	bk := &backend.FakeBackend{ListErr: errors.New("no device")}
+	bk := &backend.FakeBackend{Devices: testDev(), ListErr: errors.New("read error")}
 	if _, err := runCmd(t, bk, "purge", "-y"); err == nil {
 		t.Fatal("want list error")
 	}

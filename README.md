@@ -15,6 +15,9 @@ other MTP devices too.
 The device must be in MTP/USB mode. On macOS, quit Garmin Express and unmount the
 watch in Finder first — only one program can use an MTP device at a time.
 
+Commands fail with a clear error when no device is found rather than doing nothing.
+Pass `--wait <duration>` (for example `--wait 30s`) to poll until a device appears.
+
 ## Install
 
 ```

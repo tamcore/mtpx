@@ -19,6 +19,9 @@ func newListCmd(bk backend.Backend) *cobra.Command {
 		Short: "List the contents of a directory on the device",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireDevice(cmd, bk); err != nil {
+				return err
+			}
 			var path string
 			if len(args) == 1 {
 				path = args[0]
