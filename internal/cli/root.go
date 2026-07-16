@@ -31,6 +31,7 @@ func NewRootCmd(version, commit string, bk backend.Backend, launch Launcher) *co
 	root.PersistentFlags().StringVar(&dest, "dest", ".",
 		"destination directory for files pulled in the TUI")
 	root.AddCommand(
+		newDevicesCmd(bk),
 		newListCmd(bk),
 		newPullCmd(bk),
 		newDeleteCmd(bk),
