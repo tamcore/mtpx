@@ -53,6 +53,17 @@ func TestChildrenLeaf(t *testing.T) {
 	eq(t, paths(got), []string{"GARMIN/Activity/a.fit", "GARMIN/Activity/b.fit"})
 }
 
+// TestChildrenReordersFileBeforeDir feeds a file ahead of a directory so the
+// sort must move the directory first, exercising both comparator branches.
+func TestChildrenReordersFileBeforeDir(t *testing.T) {
+	objs := []backend.Object{
+		{Path: "d/file.txt", Name: "file.txt"},
+		{Path: "d/sub", Name: "sub", IsDir: true},
+	}
+	got := Children(objs, "d")
+	eq(t, paths(got), []string{"d/sub", "d/file.txt"})
+}
+
 func TestFind(t *testing.T) {
 	o, ok := Find(sample(), "GARMIN/Activity")
 	if !ok || !o.IsDir || o.ID != 2 {
