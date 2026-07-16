@@ -1,0 +1,6 @@
+/bin/
+/dist/
+/mtpx
+*.out
+coverage.*
+.DS_Store
