@@ -10,13 +10,14 @@ import (
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
 	case objectsMsg:
 		m.objects = msg.objects
 		m.loading = false
 		m.err = nil
-		return m.clampCursor(), nil
+		return m.reconcile(), nil
 	case errMsg:
 		m.loading = false
 		m.err = msg.err
@@ -47,29 +48,28 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.mode == modeConfirm {
 		return m.handleConfirm(msg)
 	}
+	last := len(m.cols) - 1
 	switch msg.String() {
 	case "ctrl+c", "q":
 		return m, tea.Quit
 	case "up", "k":
-		if m.cursor > 0 {
-			m.cursor--
+		if m.cols[last].cursor > 0 {
+			m.cols = setCursor(m.cols, last, m.cols[last].cursor-1)
 		}
 	case "down", "j":
-		if m.cursor < len(m.entries())-1 {
-			m.cursor++
+		if m.cols[last].cursor < len(m.entriesOf(m.cols[last].dir))-1 {
+			m.cols = setCursor(m.cols, last, m.cols[last].cursor+1)
 		}
 	case "enter", "right", "l":
-		if e, ok := m.current(); ok && e.IsDir {
-			m.cwd = e.Path
-			m.cursor = 0
+		if e, ok := m.focusedEntry(); ok && e.IsDir {
+			m.cols = pushCol(m.cols, column{dir: e.Path})
 		}
 	case "backspace", "left", "h":
-		if m.cwd != "" {
-			m.cwd = parentDir(m.cwd)
-			m.cursor = 0
+		if len(m.cols) > 1 {
+			m.cols = popCol(m.cols)
 		}
 	case " ":
-		if e, ok := m.current(); ok && !e.IsDir {
+		if e, ok := m.focusedEntry(); ok && !e.IsDir {
 			m = m.toggle(e.ID)
 		}
 	case "r":

@@ -32,9 +32,11 @@ Run `mtpx` with no arguments to open the browser:
 mtpx
 ```
 
-Keys: `↑`/`↓` move, `enter` open a folder, `⌫` go up, `space` select, `c` copy the
-selection to disk, `d` delete the selection, `r` refresh, `q` quit. Pulled files go
-to the current directory unless you pass `--dest`.
+The browser is a Finder-style column view: each folder you open adds a pane to the
+right, and the highlighted folder is previewed in the next pane. Keys: `↑`/`↓` move,
+`→`/`enter` open a folder, `←`/`⌫` go back, `space` select, `c` copy the selection to
+disk, `d` delete the selection, `r` refresh, `q` quit. Pulled files go to the current
+directory unless you pass `--dest`.
 
 The same actions are available as subcommands for scripts:
 

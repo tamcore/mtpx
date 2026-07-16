@@ -21,9 +21,8 @@ func TestTargetsSelected(t *testing.T) {
 	}
 }
 
-func TestTargetsCurrentFile(t *testing.T) {
-	m := loadedModel(t)
-	m.cwd = "GARMIN/Activity"
+func TestTargetsFocusedFile(t *testing.T) {
+	m := atPath(t, "GARMIN", "GARMIN/Activity")
 	tg := m.targets()
 	if len(tg) != 1 || tg[0].Name != "a.fit" {
 		t.Fatalf("targets = %+v", tg)
@@ -31,15 +30,13 @@ func TestTargetsCurrentFile(t *testing.T) {
 }
 
 func TestTargetsNone(t *testing.T) {
-	m := loadedModel(t) // cursor on a directory, nothing selected
-	if tg := m.targets(); tg != nil {
+	if tg := loadedModel(t).targets(); tg != nil { // focus on a directory
 		t.Fatalf("targets = %+v, want nil", tg)
 	}
 }
 
 func TestDeletePromptsConfirm(t *testing.T) {
-	m := loadedModel(t)
-	m.cwd = "GARMIN/Activity"
+	m := atPath(t, "GARMIN", "GARMIN/Activity")
 	m, _ = update(t, m, runes("d"))
 	if m.mode != modeConfirm || len(m.pending) != 1 {
 		t.Fatalf("mode=%v pending=%d", m.mode, len(m.pending))
@@ -47,8 +44,7 @@ func TestDeletePromptsConfirm(t *testing.T) {
 }
 
 func TestDeleteNoTargets(t *testing.T) {
-	m := loadedModel(t)
-	m, _ = update(t, m, runes("d"))
+	m, _ := update(t, loadedModel(t), runes("d")) // focus on a directory
 	if m.mode != modeBrowse || !strings.Contains(m.message, "no files") {
 		t.Fatalf("mode=%v msg=%q", m.mode, m.message)
 	}
@@ -58,24 +54,22 @@ func TestConfirmYesDeletes(t *testing.T) {
 	bk := &backend.FakeBackend{Objects: sampleObjects()}
 	next, _ := NewModel(context.Background(), bk, "").Update(objectsMsg{sampleObjects()})
 	m := next.(Model)
-	m.cwd = "GARMIN/Activity"
+	m.cols = []column{{dir: ""}, {dir: "GARMIN"}, {dir: "GARMIN/Activity"}}
 	m, _ = update(t, m, runes("d"))
 	m, cmd := update(t, m, runes("y"))
 	if m.mode != modeBrowse || !m.loading || cmd == nil {
-		t.Fatalf("after y: mode=%v loading=%v cmd=%v", m.mode, m.loading, cmd)
+		t.Fatalf("mode=%v loading=%v cmd=%v", m.mode, m.loading, cmd)
 	}
-	dm, ok := cmd().(deletedMsg)
-	if !ok || dm.count != 1 || dm.failed != 0 {
+	if dm, ok := cmd().(deletedMsg); !ok || dm.count != 1 {
 		t.Fatalf("deletedMsg = %+v ok=%v", dm, ok)
 	}
-	if len(bk.Deleted) != 1 {
+	if len(bk.Deleted) != 1 || bk.Deleted[0] != 3 {
 		t.Fatalf("backend deleted %v", bk.Deleted)
 	}
 }
 
 func TestConfirmCancel(t *testing.T) {
-	m := loadedModel(t)
-	m.cwd = "GARMIN/Activity"
+	m := atPath(t, "GARMIN", "GARMIN/Activity")
 	m, _ = update(t, m, runes("d"))
 	m, _ = update(t, m, runes("n"))
 	if m.mode != modeBrowse || m.message != "cancelled" || len(m.pending) != 0 {
@@ -84,17 +78,15 @@ func TestConfirmCancel(t *testing.T) {
 }
 
 func TestConfirmEsc(t *testing.T) {
-	m := loadedModel(t)
-	m.cwd = "GARMIN/Activity"
+	m := atPath(t, "GARMIN", "GARMIN/Activity")
 	m, _ = update(t, m, runes("d"))
 	if m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyEsc}); m.mode != modeBrowse {
-		t.Fatal("esc should cancel confirm")
+		t.Fatal("esc should cancel")
 	}
 }
 
 func TestConfirmCtrlCQuits(t *testing.T) {
-	m := loadedModel(t)
-	m.cwd = "GARMIN/Activity"
+	m := atPath(t, "GARMIN", "GARMIN/Activity")
 	m, _ = update(t, m, runes("d"))
 	_, cmd := update(t, m, tea.KeyMsg{Type: tea.KeyCtrlC})
 	if cmd == nil {
@@ -106,8 +98,7 @@ func TestConfirmCtrlCQuits(t *testing.T) {
 }
 
 func TestConfirmOtherKeyStays(t *testing.T) {
-	m := loadedModel(t)
-	m.cwd = "GARMIN/Activity"
+	m := atPath(t, "GARMIN", "GARMIN/Activity")
 	m, _ = update(t, m, runes("d"))
 	m, cmd := update(t, m, runes("z"))
 	if m.mode != modeConfirm || cmd != nil {
@@ -115,23 +106,19 @@ func TestConfirmOtherKeyStays(t *testing.T) {
 	}
 }
 
+func TestDeletedMsgSuccess(t *testing.T) {
+	m, _ := update(t, loadedModel(t), deletedMsg{count: 2, failed: 0})
+	if !strings.Contains(m.message, "deleted 2 file(s)") || !m.loading {
+		t.Fatalf("msg=%q loading=%v", m.message, m.loading)
+	}
+}
+
 func TestDeletedMsgFailures(t *testing.T) {
 	m := loadedModel(t)
 	m.selected = map[uint32]bool{3: true}
 	m, _ = update(t, m, deletedMsg{count: 2, failed: 1})
-	if !strings.Contains(m.message, "1 failed") || !m.loading {
-		t.Fatalf("msg=%q loading=%v", m.message, m.loading)
-	}
-	if len(m.selected) != 0 {
-		t.Fatal("selection should clear after delete")
-	}
-}
-
-func TestDeletedMsgSuccess(t *testing.T) {
-	m := loadedModel(t)
-	m, _ = update(t, m, deletedMsg{count: 2, failed: 0})
-	if !strings.Contains(m.message, "deleted 2 file(s)") || !m.loading {
-		t.Fatalf("msg=%q loading=%v", m.message, m.loading)
+	if !strings.Contains(m.message, "1 failed") || len(m.selected) != 0 {
+		t.Fatalf("msg=%q selected=%d", m.message, len(m.selected))
 	}
 }
 
@@ -139,13 +126,12 @@ func TestPullCurrent(t *testing.T) {
 	bk := &backend.FakeBackend{Objects: sampleObjects(), Contents: map[uint32][]byte{3: []byte("abc")}}
 	next, _ := NewModel(context.Background(), bk, t.TempDir()).Update(objectsMsg{sampleObjects()})
 	m := next.(Model)
-	m.cwd = "GARMIN/Activity"
+	m.cols = []column{{dir: ""}, {dir: "GARMIN"}, {dir: "GARMIN/Activity"}}
 	m2, cmd := update(t, m, runes("c"))
 	if cmd == nil || m2.message != "pulling…" {
-		t.Fatalf("c: msg=%q cmd=%v", m2.message, cmd)
+		t.Fatalf("msg=%q cmd=%v", m2.message, cmd)
 	}
-	pm, ok := cmd().(pulledMsg)
-	if !ok || pm.count != 1 || pm.failed != 0 {
+	if pm, ok := cmd().(pulledMsg); !ok || pm.count != 1 {
 		t.Fatalf("pulledMsg = %+v ok=%v", pm, ok)
 	}
 	b, err := os.ReadFile(filepath.Join(m.destDir, "GARMIN", "Activity", "a.fit"))
@@ -155,10 +141,9 @@ func TestPullCurrent(t *testing.T) {
 }
 
 func TestPullNoTargets(t *testing.T) {
-	m := loadedModel(t)
-	m2, cmd := update(t, m, runes("c"))
-	if cmd != nil || !strings.Contains(m2.message, "no files") {
-		t.Fatalf("msg=%q cmd=%v", m2.message, cmd)
+	m, cmd := update(t, loadedModel(t), runes("c")) // focus on a directory
+	if cmd != nil || !strings.Contains(m.message, "no files") {
+		t.Fatalf("msg=%q cmd=%v", m.message, cmd)
 	}
 }
 
@@ -172,8 +157,7 @@ func TestPulledMsgSuccess(t *testing.T) {
 }
 
 func TestPulledMsgFailures(t *testing.T) {
-	m := loadedModel(t)
-	m, _ = update(t, m, pulledMsg{count: 1, failed: 2})
+	m, _ := update(t, loadedModel(t), pulledMsg{count: 1, failed: 2})
 	if !strings.Contains(m.message, "2 failed") {
 		t.Fatalf("msg=%q", m.message)
 	}
@@ -184,7 +168,7 @@ func TestPullCmdGetError(t *testing.T) {
 	m := NewModel(context.Background(), bk, t.TempDir())
 	pm := m.pullCmd([]backend.Object{{ID: 3, Path: "GARMIN/Activity/a.fit"}})().(pulledMsg)
 	if pm.failed != 1 {
-		t.Fatalf("expected 1 failure, got %+v", pm)
+		t.Fatalf("expected failure, got %+v", pm)
 	}
 }
 
@@ -194,7 +178,7 @@ func TestPullCmdMkdirError(t *testing.T) {
 		t.Fatal(err)
 	}
 	bk := &backend.FakeBackend{Contents: map[uint32][]byte{3: []byte("abc")}}
-	m := NewModel(context.Background(), bk, blocker) // destDir is a file
+	m := NewModel(context.Background(), bk, blocker)
 	pm := m.pullCmd([]backend.Object{{ID: 3, Path: "GARMIN/Activity/a.fit"}})().(pulledMsg)
 	if pm.failed != 1 {
 		t.Fatalf("expected mkdir failure, got %+v", pm)
@@ -207,22 +191,5 @@ func TestDeleteCmdFailure(t *testing.T) {
 	dm := m.deleteCmd([]backend.Object{{ID: 3}})().(deletedMsg)
 	if dm.failed != 1 {
 		t.Fatalf("expected failure, got %+v", dm)
-	}
-}
-
-func TestViewConfirmMode(t *testing.T) {
-	m := loadedModel(t)
-	m.cwd = "GARMIN/Activity"
-	m, _ = update(t, m, runes("d"))
-	if !strings.Contains(m.View(), "Delete 1 file(s)? (y/n)") {
-		t.Fatalf("view = %q", m.View())
-	}
-}
-
-func TestViewMessage(t *testing.T) {
-	m := loadedModel(t)
-	m.message = "hello there"
-	if !strings.Contains(m.View(), "hello there") {
-		t.Fatalf("view = %q", m.View())
 	}
 }

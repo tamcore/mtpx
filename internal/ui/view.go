@@ -3,16 +3,27 @@ package ui
 import (
 	"fmt"
 	"strings"
+
+	"github.com/tamcore/mtpx/internal/backend"
 )
 
-// reservedRows is the number of lines the header and footer occupy, subtracted
-// from the terminal height when deciding how many entries fit.
-const reservedRows = 6
+const (
+	colWidth     = 22
+	reservedRows = 4
+	defaultRows  = 12
+)
 
-// View renders the current model state.
+// renderCol is one pane prepared for display.
+type renderCol struct {
+	entries []backend.Object
+	cursor  int // highlighted index, -1 for none (preview pane)
+	active  bool
+}
+
+// View renders the current model state as Finder-style columns.
 func (m Model) View() string {
 	var b strings.Builder
-	loc := m.cwd
+	loc := m.focused().dir
 	if loc == "" {
 		loc = "/"
 	}
@@ -26,36 +37,121 @@ func (m Model) View() string {
 		fmt.Fprintf(&b, "error: %v\n", m.err)
 		return b.String()
 	}
-
 	if m.mode == modeConfirm {
 		fmt.Fprintf(&b, "Delete %d file(s)? (y/n)\n\n", len(m.pending))
 	}
 
-	entries := m.entries()
-	if len(entries) == 0 {
-		b.WriteString("  (empty)\n")
+	b.WriteString(m.columnsView())
+
+	fmt.Fprintf(&b, "\n%d selected · ↑/↓ move · →/enter open · ←/⌫ back · space select · c copy · d delete · r refresh · q quit\n", len(m.selected))
+	if m.message != "" {
+		fmt.Fprintf(&b, "%s\n", m.message)
 	}
-	start, end := m.visibleRange(len(entries))
-	for i := start; i < end; i++ {
-		e := entries[i]
-		cursor := "  "
-		if i == m.cursor {
-			cursor = "> "
+	return b.String()
+}
+
+// rows is the number of list lines each column shows.
+func (m Model) rows() int {
+	if m.height <= 0 {
+		return defaultRows
+	}
+	if r := m.height - reservedRows; r > 0 {
+		return r
+	}
+	return 1
+}
+
+// renderColumns builds one pane per open directory, plus a preview pane for the
+// highlighted folder.
+func (m Model) renderColumns() []renderCol {
+	var rcs []renderCol
+	for i, c := range m.cols {
+		entries := m.entriesOf(c.dir)
+		active := i == len(m.cols)-1
+		cursor := c.cursor
+		if !active {
+			cursor = indexOfPath(entries, m.cols[i+1].dir)
 		}
-		mark := " "
+		rcs = append(rcs, renderCol{entries: entries, cursor: cursor, active: active})
+	}
+	if e, ok := m.focusedEntry(); ok && e.IsDir {
+		rcs = append(rcs, renderCol{entries: m.entriesOf(e.Path), cursor: -1})
+	}
+	return rcs
+}
+
+// visibleColumns keeps the rightmost panes that fit the terminal width.
+func visibleColumns(rcs []renderCol, width int) []renderCol {
+	if width <= 0 {
+		return rcs
+	}
+	k := width / colWidth
+	if k < 1 {
+		k = 1
+	}
+	if len(rcs) <= k {
+		return rcs
+	}
+	return rcs[len(rcs)-k:]
+}
+
+func (m Model) columnsView() string {
+	rcs := visibleColumns(m.renderColumns(), m.width)
+	rows := m.rows()
+	cells := make([][]string, len(rcs))
+	for i, rc := range rcs {
+		cells[i] = m.columnLines(rc, rows)
+	}
+	var b strings.Builder
+	for r := 0; r < rows; r++ {
+		for _, col := range cells {
+			b.WriteString(col[r])
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func (m Model) columnLines(rc renderCol, rows int) []string {
+	lines := make([]string, rows)
+	for i := range lines {
+		lines[i] = pad("", colWidth)
+	}
+	if len(rc.entries) == 0 {
+		lines[0] = pad("  (empty)", colWidth)
+		return lines
+	}
+	start, end := windowAround(rc.cursor, len(rc.entries), rows)
+	r := 0
+	for i := start; i < end; i++ {
+		e := rc.entries[i]
+		point := " "
+		if i == rc.cursor {
+			if rc.active {
+				point = ">"
+			} else {
+				point = "·"
+			}
+		}
+		sel := " "
 		if m.selected[e.ID] {
-			mark = "x"
+			sel = "x"
 		}
 		name := e.Name
 		if e.IsDir {
 			name += "/"
 		}
-		fmt.Fprintf(&b, "%s[%s] %s\n", cursor, mark, name)
+		lines[r] = pad(fmt.Sprintf("%s%s %s", point, sel, name), colWidth)
+		r++
 	}
+	return lines
+}
 
-	fmt.Fprintf(&b, "\n%d selected · ↑/↓ move · enter open · ⌫ up · space select · c copy · d delete · r refresh · q quit\n", len(m.selected))
-	if m.message != "" {
-		fmt.Fprintf(&b, "%s\n", m.message)
+// pad truncates or space-pads s to exactly w runes.
+func pad(s string, w int) string {
+	r := []rune(s)
+	if len(r) >= w {
+		return string(r[:w-1]) + " "
 	}
-	return b.String()
+	return s + strings.Repeat(" ", w-len(r))
 }

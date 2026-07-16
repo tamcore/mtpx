@@ -3,7 +3,6 @@ package ui
 
 import (
 	"context"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -18,17 +17,23 @@ const (
 	modeConfirm
 )
 
-// Model is the Bubble Tea model backing the browser.
+// column is one Finder-style pane: a directory and the cursor within it.
+type column struct {
+	dir    string
+	cursor int
+}
+
+// Model is the Bubble Tea model backing the column browser.
 type Model struct {
 	backend  backend.Backend
 	ctx      context.Context
 	destDir  string
 	objects  []backend.Object
-	cwd      string
-	cursor   int
+	cols     []column
 	selected map[uint32]bool
 	loading  bool
 	err      error
+	width    int
 	height   int
 	mode     mode
 	message  string
@@ -42,9 +47,35 @@ func NewModel(ctx context.Context, bk backend.Backend, destDir string) Model {
 		backend:  bk,
 		ctx:      ctx,
 		destDir:  destDir,
+		cols:     []column{{dir: ""}},
 		selected: map[uint32]bool{},
 		loading:  true,
 	}
+}
+
+// Init starts loading the device listing.
+func (m Model) Init() tea.Cmd {
+	return m.loadCmd()
+}
+
+// entriesOf returns the direct children of a directory.
+func (m Model) entriesOf(dir string) []backend.Object {
+	return vfs.Children(m.objects, dir)
+}
+
+// focused returns the rightmost (active) column.
+func (m Model) focused() column {
+	return m.cols[len(m.cols)-1]
+}
+
+// focusedEntry returns the entry under the cursor of the active column.
+func (m Model) focusedEntry() (backend.Object, bool) {
+	c := m.focused()
+	entries := m.entriesOf(c.dir)
+	if c.cursor < 0 || c.cursor >= len(entries) {
+		return backend.Object{}, false
+	}
+	return entries[c.cursor], true
 }
 
 // targets returns the files the next action applies to: the selected files, or
@@ -59,29 +90,10 @@ func (m Model) targets() []backend.Object {
 		}
 		return out
 	}
-	if e, ok := m.current(); ok && !e.IsDir {
+	if e, ok := m.focusedEntry(); ok && !e.IsDir {
 		return []backend.Object{e}
 	}
 	return nil
-}
-
-// Init starts loading the device listing.
-func (m Model) Init() tea.Cmd {
-	return m.loadCmd()
-}
-
-// entries returns the direct children of the current directory.
-func (m Model) entries() []backend.Object {
-	return vfs.Children(m.objects, m.cwd)
-}
-
-// current returns the entry under the cursor.
-func (m Model) current() (backend.Object, bool) {
-	entries := m.entries()
-	if m.cursor < 0 || m.cursor >= len(entries) {
-		return backend.Object{}, false
-	}
-	return entries[m.cursor], true
 }
 
 // toggle returns a copy of the model with id's selection flipped.
@@ -99,41 +111,65 @@ func (m Model) toggle(id uint32) Model {
 	return m
 }
 
-// clampCursor keeps the cursor within the current entry list.
-func (m Model) clampCursor() Model {
-	n := len(m.entries())
-	if m.cursor >= n {
-		m.cursor = n - 1
+// reconcile drops columns whose directory no longer exists and clamps every
+// cursor into range, keeping at least the root column. Used after (re)loading.
+func (m Model) reconcile() Model {
+	cols := []column{m.cols[0]}
+	for i := 1; i < len(m.cols); i++ {
+		if o, ok := vfs.Find(m.objects, m.cols[i].dir); ok && o.IsDir {
+			cols = append(cols, m.cols[i])
+		} else {
+			break
+		}
 	}
-	if m.cursor < 0 {
-		m.cursor = 0
+	for i := range cols {
+		n := len(m.entriesOf(cols[i].dir))
+		if cols[i].cursor >= n {
+			cols[i].cursor = n - 1
+		}
+		if cols[i].cursor < 0 {
+			cols[i].cursor = 0
+		}
 	}
+	m.cols = cols
 	return m
 }
 
-// visibleRange returns the [start, end) slice of entries to render so the cursor
-// stays on screen for a list of n entries. Height 0 (size unknown) shows all.
-func (m Model) visibleRange(n int) (int, int) {
+func setCursor(cols []column, i, cursor int) []column {
+	next := append([]column(nil), cols...)
+	next[i].cursor = cursor
+	return next
+}
+
+func pushCol(cols []column, c column) []column {
+	return append(append([]column(nil), cols...), c)
+}
+
+func popCol(cols []column) []column {
+	return append([]column(nil), cols[:len(cols)-1]...)
+}
+
+// windowAround returns the [start, end) slice of n items that keeps cursor
+// visible in a viewport of rows lines. rows <= 0 or rows >= n shows everything.
+func windowAround(cursor, n, rows int) (int, int) {
 	if n == 0 {
 		return 0, 0
 	}
-	rows := m.height - reservedRows
-	if m.height == 0 || rows >= n {
+	if rows <= 0 || rows >= n {
 		return 0, n
 	}
-	if rows < 1 {
-		rows = 1
-	}
 	start := 0
-	if m.cursor >= rows {
-		start = m.cursor - rows + 1
+	if cursor >= rows {
+		start = cursor - rows + 1
 	}
 	return start, start + rows
 }
 
-func parentDir(p string) string {
-	if i := strings.LastIndex(p, "/"); i >= 0 {
-		return p[:i]
+func indexOfPath(entries []backend.Object, path string) int {
+	for i, e := range entries {
+		if e.Path == path {
+			return i
+		}
 	}
-	return ""
+	return -1
 }

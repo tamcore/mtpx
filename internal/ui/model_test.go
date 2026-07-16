@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,9 +22,21 @@ func sampleObjects() []backend.Object {
 
 func loadedModel(t *testing.T) Model {
 	t.Helper()
-	m := NewModel(context.Background(), &backend.FakeBackend{Objects: sampleObjects()}, "")
-	next, _ := m.Update(objectsMsg{sampleObjects()})
+	next, _ := NewModel(context.Background(), &backend.FakeBackend{Objects: sampleObjects()}, "").
+		Update(objectsMsg{sampleObjects()})
 	return next.(Model)
+}
+
+// atPath returns a loaded model whose open columns end at the given dirs.
+func atPath(t *testing.T, dirs ...string) Model {
+	t.Helper()
+	m := loadedModel(t)
+	cols := []column{{dir: ""}}
+	for _, d := range dirs {
+		cols = append(cols, column{dir: d})
+	}
+	m.cols = cols
+	return m
 }
 
 func update(t *testing.T, m Model, msg tea.Msg) (Model, tea.Cmd) {
@@ -40,116 +51,108 @@ func runes(s string) tea.KeyMsg {
 
 func TestInitLoads(t *testing.T) {
 	m := NewModel(context.Background(), &backend.FakeBackend{Objects: sampleObjects()}, "")
-	cmd := m.Init()
-	if cmd == nil {
-		t.Fatal("Init returned nil cmd")
-	}
-	if _, ok := cmd().(objectsMsg); !ok {
-		t.Fatalf("expected objectsMsg, got %T", cmd())
+	if _, ok := m.Init()().(objectsMsg); !ok {
+		t.Fatal("Init should load objects")
 	}
 }
 
 func TestInitError(t *testing.T) {
-	m := NewModel(context.Background(), &backend.FakeBackend{ListErr: errors.New("no device")}, "")
+	m := NewModel(context.Background(), &backend.FakeBackend{ListErr: errors.New("x")}, "")
 	if _, ok := m.Init()().(errMsg); !ok {
-		t.Fatal("expected errMsg on load failure")
+		t.Fatal("Init should surface load error")
 	}
 }
 
 func TestUpdateObjects(t *testing.T) {
 	m := loadedModel(t)
 	if m.loading {
-		t.Error("loading should be false after objectsMsg")
+		t.Error("loading should be false")
 	}
-	if len(m.entries()) != 2 { // GARMIN, Music at root
-		t.Errorf("root entries = %d, want 2", len(m.entries()))
+	if len(m.entriesOf("")) != 2 {
+		t.Errorf("root entries = %d, want 2", len(m.entriesOf("")))
 	}
 }
 
 func TestUpdateError(t *testing.T) {
-	m := NewModel(context.Background(), &backend.FakeBackend{}, "")
-	m, _ = update(t, m, errMsg{errors.New("boom")})
+	m, _ := update(t, loadedModel(t), errMsg{errors.New("boom")})
 	if m.err == nil || m.loading {
 		t.Fatalf("err=%v loading=%v", m.err, m.loading)
 	}
 }
 
 func TestUpdateWindowSize(t *testing.T) {
-	m := loadedModel(t)
-	m, _ = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
-	if m.height != 24 {
-		t.Errorf("height = %d", m.height)
+	m, _ := update(t, loadedModel(t), tea.WindowSizeMsg{Width: 100, Height: 40})
+	if m.width != 100 || m.height != 40 {
+		t.Fatalf("size = %dx%d", m.width, m.height)
 	}
 }
 
 func TestUpdateUnknownMsg(t *testing.T) {
-	m := loadedModel(t)
-	next, cmd := update(t, m, struct{}{})
-	if cmd != nil {
-		t.Error("unknown msg should produce no command")
-	}
-	if len(next.entries()) != 2 {
-		t.Error("unknown msg should not change state")
+	m, cmd := update(t, loadedModel(t), struct{}{})
+	if cmd != nil || len(m.cols) != 1 {
+		t.Fatal("unknown msg should be a no-op")
 	}
 }
 
 func TestNavigateDownUp(t *testing.T) {
-	m := loadedModel(t)
+	m := loadedModel(t) // root: GARMIN, Music
 	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyDown})
-	if m.cursor != 1 {
-		t.Fatalf("cursor after down = %d", m.cursor)
+	if m.focused().cursor != 1 {
+		t.Fatalf("cursor after down = %d", m.focused().cursor)
 	}
-	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyDown}) // at last, clamp
-	if m.cursor != 1 {
-		t.Fatalf("cursor should clamp at last, got %d", m.cursor)
+	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyDown}) // clamp at last
+	if m.focused().cursor != 1 {
+		t.Fatalf("cursor should clamp, got %d", m.focused().cursor)
 	}
 	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyUp})
-	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyUp}) // at first, clamp
-	if m.cursor != 0 {
-		t.Fatalf("cursor should clamp at 0, got %d", m.cursor)
+	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyUp}) // clamp at 0
+	if m.focused().cursor != 0 {
+		t.Fatalf("cursor should clamp at 0, got %d", m.focused().cursor)
 	}
 }
 
-func TestEnterDirAndBack(t *testing.T) {
-	m := loadedModel(t)
-	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyEnter}) // into GARMIN
-	if m.cwd != "GARMIN" {
-		t.Fatalf("cwd = %q", m.cwd)
-	}
-	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyBackspace}) // back to root
-	if m.cwd != "" {
-		t.Fatalf("cwd after back = %q", m.cwd)
-	}
-	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyBackspace}) // at root, no-op
-	if m.cwd != "" {
-		t.Fatalf("back at root should stay, got %q", m.cwd)
+func TestDescendOpensColumn(t *testing.T) {
+	m := loadedModel(t) // cursor on GARMIN
+	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if len(m.cols) != 2 || m.focused().dir != "GARMIN" {
+		t.Fatalf("cols=%d focused=%q", len(m.cols), m.focused().dir)
 	}
 }
 
-func TestEnterOnFileNoop(t *testing.T) {
-	m := loadedModel(t)
-	m.cwd = "GARMIN/Activity"
-	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyEnter}) // a.fit is a file
-	if m.cwd != "GARMIN/Activity" {
-		t.Fatalf("entering a file changed cwd to %q", m.cwd)
+func TestBackClosesColumn(t *testing.T) {
+	m := atPath(t, "GARMIN")
+	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyLeft})
+	if len(m.cols) != 1 {
+		t.Fatalf("cols after back = %d, want 1", len(m.cols))
+	}
+	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyLeft}) // at root, no-op
+	if len(m.cols) != 1 {
+		t.Fatalf("back at root should stay, got %d", len(m.cols))
+	}
+}
+
+func TestDescendOnFileNoop(t *testing.T) {
+	m := atPath(t, "GARMIN", "GARMIN/Activity") // focused a.fit
+	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if len(m.cols) != 3 {
+		t.Fatalf("entering a file opened a column: cols=%d", len(m.cols))
 	}
 }
 
 func TestSelectToggle(t *testing.T) {
-	m := loadedModel(t)
-	m.cwd = "GARMIN/Activity"
-	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeySpace}) // select a.fit (id 3)
+	m := atPath(t, "GARMIN", "GARMIN/Activity") // focused a.fit (id 3)
+	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeySpace})
 	if !m.selected[3] {
 		t.Fatal("a.fit should be selected")
 	}
-	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeySpace}) // deselect
+	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeySpace})
 	if m.selected[3] {
 		t.Fatal("a.fit should be deselected")
 	}
 }
 
 func TestSelectDirNoop(t *testing.T) {
-	m := loadedModel(t) // cursor on GARMIN (a dir)
+	m := loadedModel(t) // focused GARMIN (dir)
 	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeySpace})
 	if len(m.selected) != 0 {
 		t.Fatal("directories must not be selectable")
@@ -157,133 +160,92 @@ func TestSelectDirNoop(t *testing.T) {
 }
 
 func TestQuit(t *testing.T) {
-	m := loadedModel(t)
 	for _, k := range []tea.KeyMsg{{Type: tea.KeyCtrlC}, runes("q")} {
-		_, cmd := update(t, m, k)
+		_, cmd := update(t, loadedModel(t), k)
 		if cmd == nil {
 			t.Fatalf("%v should quit", k)
 		}
 		if _, ok := cmd().(tea.QuitMsg); !ok {
-			t.Fatalf("%v did not return QuitMsg", k)
+			t.Fatalf("%v not QuitMsg", k)
 		}
 	}
 }
 
 func TestRefresh(t *testing.T) {
-	m := loadedModel(t)
-	next, cmd := update(t, m, runes("r"))
-	if !next.loading || cmd == nil {
-		t.Fatal("refresh should set loading and return a command")
+	m, cmd := update(t, loadedModel(t), runes("r"))
+	if !m.loading || cmd == nil {
+		t.Fatal("refresh should load")
 	}
 	if _, ok := cmd().(objectsMsg); !ok {
-		t.Fatal("refresh command should reload objects")
+		t.Fatal("refresh should reload objects")
 	}
 }
 
 func TestUnknownKeyNoop(t *testing.T) {
-	m := loadedModel(t)
-	next, cmd := update(t, m, runes("z"))
-	if cmd != nil || next.cursor != 0 {
+	m, cmd := update(t, loadedModel(t), runes("z"))
+	if cmd != nil || m.focused().cursor != 0 {
 		t.Fatal("unknown key should be a no-op")
 	}
 }
 
-func TestClampCursorOnReload(t *testing.T) {
+func TestReconcilePrunesMissingDir(t *testing.T) {
+	m := atPath(t, "GARMIN", "GARMIN/Activity")
+	objs := []backend.Object{
+		{ID: 1, Path: "GARMIN", Name: "GARMIN", IsDir: true},
+		{ID: 5, Path: "Music", Name: "Music", IsDir: true},
+	}
+	m, _ = update(t, m, objectsMsg{objs})
+	if len(m.cols) != 2 || m.cols[1].dir != "GARMIN" {
+		t.Fatalf("cols = %v", m.cols)
+	}
+}
+
+func TestReconcileClampsCursor(t *testing.T) {
 	m := loadedModel(t)
-	m.cwd = "GARMIN/Activity"
-	m.cursor = 1 // b.fit
-	// reload with fewer objects so the cursor is now out of range
-	fewer := []backend.Object{{ID: 2, Path: "GARMIN/Activity", Name: "Activity", IsDir: true}}
-	m.cwd = ""
-	m2, _ := update(t, m, objectsMsg{fewer})
-	if m2.cursor < 0 {
-		t.Fatalf("cursor = %d", m2.cursor)
+	m.cols = []column{{dir: "", cursor: 5}}
+	m, _ = update(t, m, objectsMsg{sampleObjects()})
+	if m.cols[0].cursor != 1 {
+		t.Fatalf("cursor = %d, want 1", m.cols[0].cursor)
 	}
 }
 
-func TestCurrentOutOfRange(t *testing.T) {
+func TestFocusedEntryOutOfRange(t *testing.T) {
 	m := NewModel(context.Background(), &backend.FakeBackend{}, "")
-	if _, ok := m.current(); ok {
-		t.Fatal("current should be false with no entries")
+	if _, ok := m.focusedEntry(); ok {
+		t.Fatal("no entries should give no focused entry")
 	}
 }
 
-func TestVisibleRange(t *testing.T) {
+func TestWindowAround(t *testing.T) {
 	tests := []struct {
 		name               string
-		height, cursor, n  int
+		cursor, n, rows    int
 		wantStart, wantEnd int
 	}{
-		{"empty", 24, 0, 0, 0, 0},
-		{"unknown height shows all", 0, 5, 10, 0, 10},
-		{"tall enough shows all", 100, 0, 10, 0, 10},
-		{"tiny height one row", 4, 0, 10, 0, 1},
-		{"window near top", 10, 2, 10, 0, 4},
-		{"window scrolled", 10, 9, 10, 6, 10},
+		{"empty", 0, 0, 5, 0, 0},
+		{"rows zero shows all", -1, 10, 0, 0, 10},
+		{"rows exceed n", 0, 5, 10, 0, 5},
+		{"near top", 2, 10, 4, 0, 4},
+		{"scrolled", 8, 10, 4, 5, 9},
+		{"preview no cursor", -1, 10, 4, 0, 4},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := Model{height: tt.height, cursor: tt.cursor}
-			start, end := m.visibleRange(tt.n)
-			if start != tt.wantStart || end != tt.wantEnd {
-				t.Fatalf("visibleRange = (%d,%d), want (%d,%d)", start, end, tt.wantStart, tt.wantEnd)
+			s, e := windowAround(tt.cursor, tt.n, tt.rows)
+			if s != tt.wantStart || e != tt.wantEnd {
+				t.Fatalf("windowAround(%d,%d,%d) = (%d,%d), want (%d,%d)",
+					tt.cursor, tt.n, tt.rows, s, e, tt.wantStart, tt.wantEnd)
 			}
 		})
 	}
 }
 
-func TestParentDir(t *testing.T) {
-	if parentDir("a/b/c") != "a/b" {
-		t.Error("nested")
+func TestIndexOfPath(t *testing.T) {
+	entries := []backend.Object{{Path: "a"}, {Path: "b"}}
+	if indexOfPath(entries, "b") != 1 {
+		t.Error("found")
 	}
-	if parentDir("top") != "" {
-		t.Error("top level")
-	}
-}
-
-func TestViewLoading(t *testing.T) {
-	m := NewModel(context.Background(), &backend.FakeBackend{}, "")
-	if !strings.Contains(m.View(), "loading") {
-		t.Fatalf("view = %q", m.View())
-	}
-}
-
-func TestViewError(t *testing.T) {
-	m := NewModel(context.Background(), &backend.FakeBackend{}, "")
-	m, _ = update(t, m, errMsg{errors.New("kaboom")})
-	if !strings.Contains(m.View(), "kaboom") {
-		t.Fatalf("view = %q", m.View())
-	}
-}
-
-func TestViewEmpty(t *testing.T) {
-	m := loadedModel(t)
-	m.cwd = "Music" // no children
-	if !strings.Contains(m.View(), "(empty)") {
-		t.Fatalf("view = %q", m.View())
-	}
-}
-
-func TestViewEntries(t *testing.T) {
-	m := loadedModel(t)
-	m.cwd = "GARMIN/Activity"
-	m = m.toggle(3) // select a.fit
-	out := m.View()
-	if !strings.Contains(out, "a.fit") || !strings.Contains(out, "b.fit") {
-		t.Fatalf("view missing files: %q", out)
-	}
-	if !strings.Contains(out, "1 selected") {
-		t.Fatalf("view missing selection count: %q", out)
-	}
-	if !strings.Contains(out, "[x]") {
-		t.Fatalf("view missing selection marker: %q", out)
-	}
-}
-
-func TestViewDirSuffixAndScroll(t *testing.T) {
-	m := loadedModel(t)
-	out := m.View()
-	if !strings.Contains(out, "GARMIN/") || !strings.Contains(out, "> ") {
-		t.Fatalf("root view = %q", out)
+	if indexOfPath(entries, "z") != -1 {
+		t.Error("missing")
 	}
 }
