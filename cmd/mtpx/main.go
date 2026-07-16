@@ -1,6 +1,10 @@
 package main
 
-import "fmt"
+import (
+	"os"
+
+	"github.com/tamcore/mtpx/internal/cli"
+)
 
 var (
 	version = "dev"
@@ -8,5 +12,7 @@ var (
 )
 
 func main() {
-	fmt.Printf("mtpx %s (%s)\n", version, commit)
+	if err := cli.Execute(version, commit, os.Args[1:]); err != nil {
+		os.Exit(1)
+	}
 }
