@@ -18,7 +18,11 @@ func NewRootCmd(version, commit string, bk backend.Backend) *cobra.Command {
 		Version:      fmt.Sprintf("%s (%s)", version, commit),
 		SilenceUsage: true,
 	}
-	root.AddCommand(newListCmd(bk))
+	root.AddCommand(
+		newListCmd(bk),
+		newPullCmd(bk),
+		newPushCmd(bk),
+	)
 	return root
 }
 
