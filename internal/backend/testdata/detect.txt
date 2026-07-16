@@ -1,0 +1,14 @@
+libmtp version: 1.1.23
+
+Listing raw device(s)
+Device 0 (VID=091e and PID=4f67) is a Garmin EPIX 2.
+   Found 1 device(s):
+   Garmin: EPIX 2 (091e:4f67) @ bus 0, dev 5
+Attempting to connect device(s)
+Device 0 (VID=091e and PID=4f67) is a Garmin EPIX 2.
+Device info:
+   Manufacturer: Garmin
+   Model: EPIX
+   Serial number: 0000000000000000
+   Device version: 1.0
+OK.

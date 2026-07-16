@@ -1,0 +1,41 @@
+libmtp version: 1.1.23
+
+Device 0 (VID=091e and PID=4f67) is a Garmin EPIX 2.
+mtp-files: Successfully connected
+Listing File Information on Device with name: EPIX [SN:0000000000000000]
+File ID: 16777224
+   Filename: gmaptz.img
+   File size 572416 (0x000000000008BC00) bytes
+   Parent ID: 16777216
+   Storage ID: 0x00020001
+   Filetype: Undefined filetype
+File ID: 16778300
+   Filename: 2024-01-15-07-00-00.fit
+   File size 245760 (0x000000000003C000) bytes
+   Parent ID: 16777252
+   Storage ID: 0x00020001
+   Filetype: Undefined filetype
+File ID: 16778301
+   Filename: 2024-02-20-18-30-00.fit
+   File size 189440 (0x000000000002E400) bytes
+   Parent ID: 16777252
+   Storage ID: 0x00020001
+   Filetype: Undefined filetype
+File ID: 16778310
+   Filename: MyWorkout.fit
+   File size 4096 (0x0000000000001000) bytes
+   Parent ID: 16777253
+   Storage ID: 0x00020001
+   Filetype: Undefined filetype
+File ID: 16778320
+   Filename: Interval.fit
+   File size 2048 (0x0000000000000800) bytes
+   Parent ID: 16777770
+   Storage ID: 0x00020001
+   Filetype: Undefined filetype
+File ID: 16778330
+   Filename: abstractfile
+   None. (abstract file, size = -1)
+   Parent ID: 16777216
+   Storage ID: 0x00020001
+   Filetype: Undefined filetype

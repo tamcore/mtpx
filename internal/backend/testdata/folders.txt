@@ -1,0 +1,15 @@
+Attempting to connect device(s)
+Device 0 (VID=091e and PID=4f67) is a Garmin EPIX 2.
+mtp-folders: Successfully connected
+Friendly name: EPIX
+Storage: Internal Storage
+MTP extended association type 0x00000001 encountered
+16777216	GARMIN
+16777252	  Activity
+16777253	  Workouts
+16777770	    Schedule
+16777254	  Courses
+16777270	  PaceBands
+16777281	  NewFiles
+16777218	Music
+OK.
