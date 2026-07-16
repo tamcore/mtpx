@@ -23,7 +23,7 @@ func sampleObjects() []backend.Object {
 
 func loadedModel(t *testing.T) Model {
 	t.Helper()
-	m := NewModel(context.Background(), &backend.FakeBackend{Objects: sampleObjects()})
+	m := NewModel(context.Background(), &backend.FakeBackend{Objects: sampleObjects()}, "")
 	next, _ := m.Update(objectsMsg{sampleObjects()})
 	return next.(Model)
 }
@@ -39,7 +39,7 @@ func runes(s string) tea.KeyMsg {
 }
 
 func TestInitLoads(t *testing.T) {
-	m := NewModel(context.Background(), &backend.FakeBackend{Objects: sampleObjects()})
+	m := NewModel(context.Background(), &backend.FakeBackend{Objects: sampleObjects()}, "")
 	cmd := m.Init()
 	if cmd == nil {
 		t.Fatal("Init returned nil cmd")
@@ -50,7 +50,7 @@ func TestInitLoads(t *testing.T) {
 }
 
 func TestInitError(t *testing.T) {
-	m := NewModel(context.Background(), &backend.FakeBackend{ListErr: errors.New("no device")})
+	m := NewModel(context.Background(), &backend.FakeBackend{ListErr: errors.New("no device")}, "")
 	if _, ok := m.Init()().(errMsg); !ok {
 		t.Fatal("expected errMsg on load failure")
 	}
@@ -67,7 +67,7 @@ func TestUpdateObjects(t *testing.T) {
 }
 
 func TestUpdateError(t *testing.T) {
-	m := NewModel(context.Background(), &backend.FakeBackend{})
+	m := NewModel(context.Background(), &backend.FakeBackend{}, "")
 	m, _ = update(t, m, errMsg{errors.New("boom")})
 	if m.err == nil || m.loading {
 		t.Fatalf("err=%v loading=%v", m.err, m.loading)
@@ -202,7 +202,7 @@ func TestClampCursorOnReload(t *testing.T) {
 }
 
 func TestCurrentOutOfRange(t *testing.T) {
-	m := NewModel(context.Background(), &backend.FakeBackend{})
+	m := NewModel(context.Background(), &backend.FakeBackend{}, "")
 	if _, ok := m.current(); ok {
 		t.Fatal("current should be false with no entries")
 	}
@@ -218,8 +218,8 @@ func TestVisibleRange(t *testing.T) {
 		{"unknown height shows all", 0, 5, 10, 0, 10},
 		{"tall enough shows all", 100, 0, 10, 0, 10},
 		{"tiny height one row", 4, 0, 10, 0, 1},
-		{"window near top", 10, 2, 10, 0, 6},
-		{"window scrolled", 10, 9, 10, 4, 10},
+		{"window near top", 10, 2, 10, 0, 4},
+		{"window scrolled", 10, 9, 10, 6, 10},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -242,14 +242,14 @@ func TestParentDir(t *testing.T) {
 }
 
 func TestViewLoading(t *testing.T) {
-	m := NewModel(context.Background(), &backend.FakeBackend{})
+	m := NewModel(context.Background(), &backend.FakeBackend{}, "")
 	if !strings.Contains(m.View(), "loading") {
 		t.Fatalf("view = %q", m.View())
 	}
 }
 
 func TestViewError(t *testing.T) {
-	m := NewModel(context.Background(), &backend.FakeBackend{})
+	m := NewModel(context.Background(), &backend.FakeBackend{}, "")
 	m, _ = update(t, m, errMsg{errors.New("kaboom")})
 	if !strings.Contains(m.View(), "kaboom") {
 		t.Fatalf("view = %q", m.View())

@@ -7,7 +7,7 @@ import (
 
 // reservedRows is the number of lines the header and footer occupy, subtracted
 // from the terminal height when deciding how many entries fit.
-const reservedRows = 4
+const reservedRows = 6
 
 // View renders the current model state.
 func (m Model) View() string {
@@ -25,6 +25,10 @@ func (m Model) View() string {
 	if m.err != nil {
 		fmt.Fprintf(&b, "error: %v\n", m.err)
 		return b.String()
+	}
+
+	if m.mode == modeConfirm {
+		fmt.Fprintf(&b, "Delete %d file(s)? (y/n)\n\n", len(m.pending))
 	}
 
 	entries := m.entries()
@@ -49,6 +53,9 @@ func (m Model) View() string {
 		fmt.Fprintf(&b, "%s[%s] %s\n", cursor, mark, name)
 	}
 
-	fmt.Fprintf(&b, "\n%d selected · ↑/↓ move · enter open · ⌫ up · space select · r refresh · q quit\n", len(m.selected))
+	fmt.Fprintf(&b, "\n%d selected · ↑/↓ move · enter open · ⌫ up · space select · c copy · d delete · r refresh · q quit\n", len(m.selected))
+	if m.message != "" {
+		fmt.Fprintf(&b, "%s\n", m.message)
+	}
 	return b.String()
 }

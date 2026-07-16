@@ -11,10 +11,18 @@ import (
 	"github.com/tamcore/mtpx/internal/vfs"
 )
 
+type mode int
+
+const (
+	modeBrowse mode = iota
+	modeConfirm
+)
+
 // Model is the Bubble Tea model backing the browser.
 type Model struct {
 	backend  backend.Backend
 	ctx      context.Context
+	destDir  string
 	objects  []backend.Object
 	cwd      string
 	cursor   int
@@ -22,16 +30,39 @@ type Model struct {
 	loading  bool
 	err      error
 	height   int
+	mode     mode
+	message  string
+	pending  []backend.Object
 }
 
-// NewModel returns a Model that lists the device on Init.
-func NewModel(ctx context.Context, bk backend.Backend) Model {
+// NewModel returns a Model that lists the device on Init. Pulled files are
+// written under destDir, preserving their device paths.
+func NewModel(ctx context.Context, bk backend.Backend, destDir string) Model {
 	return Model{
 		backend:  bk,
 		ctx:      ctx,
+		destDir:  destDir,
 		selected: map[uint32]bool{},
 		loading:  true,
 	}
+}
+
+// targets returns the files the next action applies to: the selected files, or
+// the file under the cursor when nothing is selected.
+func (m Model) targets() []backend.Object {
+	if len(m.selected) > 0 {
+		var out []backend.Object
+		for _, o := range m.objects {
+			if !o.IsDir && m.selected[o.ID] {
+				out = append(out, o)
+			}
+		}
+		return out
+	}
+	if e, ok := m.current(); ok && !e.IsDir {
+		return []backend.Object{e}
+	}
+	return nil
 }
 
 // Init starts loading the device listing.
