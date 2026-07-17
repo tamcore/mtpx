@@ -31,12 +31,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.message = fmt.Sprintf("pulled %d file(s) to %s", msg.count, m.destDir)
 		}
 		return m, nil
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	case tea.KeyMsg:
 		switch m.mode {
 		case modeConfirm:
 			return m.handleConfirm(msg)
 		case modeDeleting:
 			return m.handleDeleting(msg)
+		case modeSearch:
+			return m.handleSearch(msg)
 		default:
 			return m.handleKey(msg)
 		}
@@ -79,17 +83,23 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cols = setCursor(m.cols, last, m.cols[last].cursor-1)
 		}
 	case "down", "j":
-		if m.cols[last].cursor < len(m.entriesOf(m.cols[last].dir))-1 {
+		if m.cols[last].cursor < len(m.focusedEntries())-1 {
 			m.cols = setCursor(m.cols, last, m.cols[last].cursor+1)
 		}
 	case "enter", "right", "l":
 		if e, ok := m.focusedEntry(); ok && e.IsDir {
 			m.cols = pushCol(m.cols, column{dir: e.Path})
+			m.filter = ""
 		}
 	case "backspace", "left", "h":
 		if len(m.cols) > 1 {
 			m.cols = popCol(m.cols)
+			m.filter = ""
 		}
+	case "s":
+		m.mode = modeSearch
+		m.filter = ""
+		m.cols = setCursor(m.cols, last, 0)
 	case " ":
 		if e, ok := m.focusedEntry(); ok && !e.IsDir {
 			m = m.toggle(e.ID)
@@ -141,6 +151,39 @@ func (m Model) handleConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleDeleting(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "ctrl+c" {
 		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m Model) handleSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	last := len(m.cols) - 1
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		m.mode = modeBrowse
+		m.filter = ""
+		m.cols = setCursor(m.cols, last, 0)
+	case "enter":
+		m.mode = modeBrowse // keep the filter applied
+	case "backspace":
+		if r := []rune(m.filter); len(r) > 0 {
+			m.filter = string(r[:len(r)-1])
+			m.cols = setCursor(m.cols, last, 0)
+		}
+	case "up":
+		if m.cols[last].cursor > 0 {
+			m.cols = setCursor(m.cols, last, m.cols[last].cursor-1)
+		}
+	case "down":
+		if m.cols[last].cursor < len(m.focusedEntries())-1 {
+			m.cols = setCursor(m.cols, last, m.cols[last].cursor+1)
+		}
+	default:
+		if msg.Type == tea.KeyRunes {
+			m.filter += string(msg.Runes)
+			m.cols = setCursor(m.cols, last, 0)
+		}
 	}
 	return m, nil
 }

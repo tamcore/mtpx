@@ -27,7 +27,11 @@ func (m Model) View() string {
 	if loc == "" {
 		loc = "/"
 	}
-	fmt.Fprintf(&b, "mtpx — %s\n\n", loc)
+	if m.mode == modeSearch || m.filter != "" {
+		fmt.Fprintf(&b, "mtpx — %s   [search: %s]\n\n", loc, m.filter)
+	} else {
+		fmt.Fprintf(&b, "mtpx — %s\n\n", loc)
+	}
 
 	if m.loading {
 		b.WriteString("loading…\n")
@@ -45,7 +49,7 @@ func (m Model) View() string {
 		b.WriteString(m.deletingView())
 	default:
 		b.WriteString(m.columnsView())
-		fmt.Fprintf(&b, "\n%d selected · ↑/↓ move · →/enter open · ←/⌫ back · space select · c copy · d delete · r refresh · q quit\n", len(m.selected))
+		fmt.Fprintf(&b, "\n%d selected · ↑/↓ move · →/enter open · ←/⌫ back · space select · s search · c copy · d delete · r refresh · q quit\n", len(m.selected))
 		if m.message != "" {
 			fmt.Fprintf(&b, "%s\n", m.message)
 		}
@@ -100,13 +104,12 @@ func (m Model) rows() int {
 func (m Model) renderColumns() []renderCol {
 	var rcs []renderCol
 	for i, c := range m.cols {
-		entries := m.entriesOf(c.dir)
-		active := i == len(m.cols)-1
-		cursor := c.cursor
-		if !active {
-			cursor = indexOfPath(entries, m.cols[i+1].dir)
+		if i == len(m.cols)-1 {
+			rcs = append(rcs, renderCol{entries: m.focusedEntries(), cursor: c.cursor, active: true})
+			continue
 		}
-		rcs = append(rcs, renderCol{entries: entries, cursor: cursor, active: active})
+		entries := m.entriesOf(c.dir)
+		rcs = append(rcs, renderCol{entries: entries, cursor: indexOfPath(entries, m.cols[i+1].dir)})
 	}
 	if e, ok := m.focusedEntry(); ok && e.IsDir {
 		rcs = append(rcs, renderCol{entries: m.entriesOf(e.Path), cursor: -1})

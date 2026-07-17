@@ -39,8 +39,10 @@ mtpx
 
 The browser is a Finder-style column view: each folder you open adds a pane to the
 right, and the highlighted folder is previewed in the next pane. Keys: `↑`/`↓` move,
-`→`/`enter` open a folder, `←`/`⌫` go back, `space` select, `c` copy the selection to
-disk, `d` delete the selection, `r` refresh, `q` quit. Pulled files go to the current
+`→`/`enter` open a folder, `←`/`⌫` go back, `space` select, `s` filter the current
+pane, `c` copy the selection to disk, `d` delete the selection, `r` refresh, `q`
+quit. The mouse works too: click an entry to select it, click into the preview pane
+to open a folder, and scroll to move the cursor. Pulled files go to the current
 directory unless you pass `--dest`.
 
 The same actions are available as subcommands for scripts:

@@ -3,6 +3,7 @@ package ui
 
 import (
 	"context"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -16,6 +17,7 @@ const (
 	modeBrowse mode = iota
 	modeConfirm
 	modeDeleting
+	modeSearch
 )
 
 // column is one Finder-style pane: a directory and the cursor within it.
@@ -37,6 +39,7 @@ type Model struct {
 	width    int
 	height   int
 	mode     mode
+	filter   string // active name filter for the focused pane
 	message  string
 	pending  []backend.Object // files awaiting delete confirmation
 	queue    []backend.Object // files being deleted
@@ -84,14 +87,35 @@ func (m Model) focused() column {
 	return m.cols[len(m.cols)-1]
 }
 
+// focusedEntries returns the active column's entries, narrowed by the filter.
+func (m Model) focusedEntries() []backend.Object {
+	return filterEntries(m.entriesOf(m.focused().dir), m.filter)
+}
+
 // focusedEntry returns the entry under the cursor of the active column.
 func (m Model) focusedEntry() (backend.Object, bool) {
-	c := m.focused()
-	entries := m.entriesOf(c.dir)
-	if c.cursor < 0 || c.cursor >= len(entries) {
+	entries := m.focusedEntries()
+	cursor := m.focused().cursor
+	if cursor < 0 || cursor >= len(entries) {
 		return backend.Object{}, false
 	}
-	return entries[c.cursor], true
+	return entries[cursor], true
+}
+
+// filterEntries keeps entries whose name contains q (case-insensitive). An empty
+// query returns the entries unchanged.
+func filterEntries(entries []backend.Object, q string) []backend.Object {
+	if q == "" {
+		return entries
+	}
+	q = strings.ToLower(q)
+	var out []backend.Object
+	for _, e := range entries {
+		if strings.Contains(strings.ToLower(e.Name), q) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // targets returns the files the next action applies to: the selected files, or

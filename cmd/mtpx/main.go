@@ -18,7 +18,7 @@ var (
 
 func main() {
 	launch := func(ctx context.Context, bk backend.Backend, dest string) error {
-		return ui.Run(ctx, bk, dest, tea.WithAltScreen())
+		return ui.Run(ctx, bk, dest, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	}
 	if err := cli.Execute(version, commit, os.Args[1:], launch); err != nil {
 		os.Exit(1)
