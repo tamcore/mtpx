@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -77,25 +78,25 @@ func TestEnsureDeviceContextCancel(t *testing.T) {
 }
 
 func TestListRequiresDevice(t *testing.T) {
-	if _, err := runCmd(t, &backend.FakeBackend{}, "list"); !errors.Is(err, errNoDevice) {
+	if _, err := runCmd(t, &backend.FakeBackend{}, "list", "--wait", "0"); !errors.Is(err, errNoDevice) {
 		t.Fatalf("want errNoDevice, got %v", err)
 	}
 }
 
 func TestPullRequiresDevice(t *testing.T) {
-	if _, err := runCmd(t, &backend.FakeBackend{}, "pull", "a", t.TempDir()); !errors.Is(err, errNoDevice) {
+	if _, err := runCmd(t, &backend.FakeBackend{}, "pull", "a", t.TempDir(), "--wait", "0"); !errors.Is(err, errNoDevice) {
 		t.Fatalf("want errNoDevice, got %v", err)
 	}
 }
 
 func TestDeleteRequiresDevice(t *testing.T) {
-	if _, err := runCmd(t, &backend.FakeBackend{}, "delete", "x"); !errors.Is(err, errNoDevice) {
+	if _, err := runCmd(t, &backend.FakeBackend{}, "delete", "x", "--wait", "0"); !errors.Is(err, errNoDevice) {
 		t.Fatalf("want errNoDevice, got %v", err)
 	}
 }
 
 func TestPurgeRequiresDevice(t *testing.T) {
-	if _, err := runCmd(t, &backend.FakeBackend{}, "purge"); !errors.Is(err, errNoDevice) {
+	if _, err := runCmd(t, &backend.FakeBackend{}, "purge", "--wait", "0"); !errors.Is(err, errNoDevice) {
 		t.Fatalf("want errNoDevice, got %v", err)
 	}
 }
@@ -107,12 +108,40 @@ func TestTUIRequiresDevice(t *testing.T) {
 		return nil
 	}
 	root := NewRootCmd("v", "c", &backend.FakeBackend{}, launch)
-	root.SetArgs([]string{})
+	root.SetArgs([]string{"--wait", "0"})
 	if err := root.Execute(); !errors.Is(err, errNoDevice) {
 		t.Fatalf("want errNoDevice, got %v", err)
 	}
 	if launched {
 		t.Fatal("TUI should not launch without a device")
+	}
+}
+
+func TestParseWait(t *testing.T) {
+	cases := map[string]time.Duration{
+		"":    0,
+		"0":   0,
+		"30":  30 * time.Second,
+		"60":  60 * time.Second,
+		"30s": 30 * time.Second,
+		"2m":  2 * time.Minute,
+	}
+	for in, want := range cases {
+		got, err := parseWait(in)
+		if err != nil || got != want {
+			t.Errorf("parseWait(%q) = %v, %v; want %v", in, got, err, want)
+		}
+	}
+	if _, err := parseWait("garbage"); err == nil {
+		t.Error("parseWait(garbage) should error")
+	}
+}
+
+func TestRequireDeviceInvalidWait(t *testing.T) {
+	bk := &backend.FakeBackend{Devices: testDev()}
+	_, err := runCmd(t, bk, "list", "--wait", "garbage")
+	if err == nil || !strings.Contains(err.Error(), "invalid --wait") {
+		t.Fatalf("want invalid --wait error, got %v", err)
 	}
 }
 

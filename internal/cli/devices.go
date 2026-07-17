@@ -20,8 +20,11 @@ func newDevicesCmd(bk backend.Backend) *cobra.Command {
 		Short:   "List attached MTP devices",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if wait, _ := cmd.Flags().GetDuration("wait"); wait > 0 {
-				_ = ensureDevice(cmd.Context(), bk, wait, devicePollInterval)
+			if cmd.Flags().Changed("wait") {
+				raw, _ := cmd.Flags().GetString("wait")
+				if wait, err := parseWait(raw); err == nil && wait > 0 {
+					_ = ensureDevice(cmd.Context(), bk, wait, devicePollInterval)
+				}
 			}
 			return runDevices(cmd.Context(), cmd.OutOrStdout(), bk, asJSON)
 		},

@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -11,6 +13,18 @@ import (
 )
 
 const devicePollInterval = time.Second
+
+// parseWait interprets a --wait value: a bare number is seconds, otherwise it is
+// a Go duration string (e.g. "500ms", "2m").
+func parseWait(s string) (time.Duration, error) {
+	if s == "" {
+		return 0, nil
+	}
+	if n, err := strconv.Atoi(s); err == nil {
+		return time.Duration(n) * time.Second, nil
+	}
+	return time.ParseDuration(s)
+}
 
 var errNoDevice = errors.New(
 	"no MTP device found; connect the device, put it in MTP mode, and close other MTP programs (retry with --wait)")
@@ -42,6 +56,10 @@ func ensureDevice(ctx context.Context, bk backend.Backend, timeout, interval tim
 // requireDevice blocks until a device is available, honoring the --wait flag,
 // and returns an error if none appears in time.
 func requireDevice(cmd *cobra.Command, bk backend.Backend) error {
-	wait, _ := cmd.Flags().GetDuration("wait")
+	raw, _ := cmd.Flags().GetString("wait")
+	wait, err := parseWait(raw)
+	if err != nil {
+		return fmt.Errorf("invalid --wait %q: %w", raw, err)
+	}
 	return ensureDevice(cmd.Context(), bk, wait, devicePollInterval)
 }

@@ -33,8 +33,8 @@ func NewRootCmd(version, commit string, bk backend.Backend, launch Launcher) *co
 	}
 	root.PersistentFlags().StringVar(&dest, "dest", ".",
 		"destination directory for files pulled in the TUI")
-	root.PersistentFlags().Duration("wait", 0,
-		"wait up to this long for a device to appear (e.g. 30s); 0 fails immediately")
+	root.PersistentFlags().String("wait", "60s",
+		"wait up to this long for a device to appear (bare number = seconds, e.g. 60 or 30s); 0 fails immediately")
 	root.AddCommand(
 		newDevicesCmd(bk),
 		newListCmd(bk),
