@@ -15,6 +15,7 @@ type mode int
 const (
 	modeBrowse mode = iota
 	modeConfirm
+	modeDeleting
 )
 
 // column is one Finder-style pane: a directory and the cursor within it.
@@ -37,7 +38,22 @@ type Model struct {
 	height   int
 	mode     mode
 	message  string
-	pending  []backend.Object
+	pending  []backend.Object // files awaiting delete confirmation
+	queue    []backend.Object // files being deleted
+	done     int
+	failed   int
+	log      []string
+}
+
+// removeObject returns objects without the entry with the given id.
+func removeObject(objects []backend.Object, id uint32) []backend.Object {
+	out := make([]backend.Object, 0, len(objects))
+	for _, o := range objects {
+		if o.ID != id {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 // NewModel returns a Model that lists the device on Init. Pulled files are

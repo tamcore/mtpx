@@ -37,15 +37,49 @@ func (m Model) View() string {
 		fmt.Fprintf(&b, "error: %v\n", m.err)
 		return b.String()
 	}
-	if m.mode == modeConfirm {
-		fmt.Fprintf(&b, "Delete %d file(s)? (y/n)\n\n", len(m.pending))
+
+	switch m.mode {
+	case modeConfirm:
+		b.WriteString(m.confirmView())
+	case modeDeleting:
+		b.WriteString(m.deletingView())
+	default:
+		b.WriteString(m.columnsView())
+		fmt.Fprintf(&b, "\n%d selected · ↑/↓ move · →/enter open · ←/⌫ back · space select · c copy · d delete · r refresh · q quit\n", len(m.selected))
+		if m.message != "" {
+			fmt.Fprintf(&b, "%s\n", m.message)
+		}
 	}
+	return b.String()
+}
 
-	b.WriteString(m.columnsView())
+// confirmView lists the files queued for deletion and the prompt.
+func (m Model) confirmView() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Delete %d file(s)?\n\n", len(m.pending))
+	limit := m.rows()
+	for i, o := range m.pending {
+		if i >= limit {
+			fmt.Fprintf(&b, "  … and %d more\n", len(m.pending)-limit)
+			break
+		}
+		fmt.Fprintf(&b, "  %s\n", o.Path)
+	}
+	b.WriteString("\n[y] delete   [n]/esc cancel\n")
+	return b.String()
+}
 
-	fmt.Fprintf(&b, "\n%d selected · ↑/↓ move · →/enter open · ←/⌫ back · space select · c copy · d delete · r refresh · q quit\n", len(m.selected))
-	if m.message != "" {
-		fmt.Fprintf(&b, "%s\n", m.message)
+// deletingView shows delete progress and the most recent per-file results.
+func (m Model) deletingView() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Deleting… %d/%d\n\n", m.done+m.failed, len(m.queue))
+	limit := m.rows()
+	start := 0
+	if len(m.log) > limit {
+		start = len(m.log) - limit
+	}
+	for _, line := range m.log[start:] {
+		fmt.Fprintf(&b, "  %s\n", line)
 	}
 	return b.String()
 }

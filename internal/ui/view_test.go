@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -26,8 +27,48 @@ func TestViewError(t *testing.T) {
 func TestViewConfirm(t *testing.T) {
 	m := atPath(t, "GARMIN", "GARMIN/Activity")
 	m, _ = update(t, m, runes("d")) // focused a.fit -> confirm
-	if !strings.Contains(m.View(), "Delete 1 file(s)? (y/n)") {
+	out := m.View()
+	for _, want := range []string{"Delete 1 file(s)?", "GARMIN/Activity/a.fit", "[y] delete"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("confirm view missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestConfirmViewManyFiles(t *testing.T) {
+	m := loadedModel(t)
+	m.mode = modeConfirm
+	m.height = 8 // rows = 4
+	m.pending = make([]backend.Object, 10)
+	for i := range m.pending {
+		m.pending[i] = backend.Object{Path: fmt.Sprintf("f%d", i)}
+	}
+	if !strings.Contains(m.View(), "… and 6 more") {
 		t.Fatalf("view = %q", m.View())
+	}
+}
+
+func TestDeletingViewShowsProgress(t *testing.T) {
+	m := loadedModel(t)
+	m.mode = modeDeleting
+	m.queue = make([]backend.Object, 5)
+	m.done, m.failed = 2, 1
+	m.log = []string{"deleted a", "deleted b", "failed c: x"}
+	out := m.View()
+	if !strings.Contains(out, "Deleting… 3/5") || !strings.Contains(out, "failed c") {
+		t.Fatalf("view = %q", out)
+	}
+}
+
+func TestDeletingViewWindowsLog(t *testing.T) {
+	m := loadedModel(t)
+	m.mode = modeDeleting
+	m.queue = make([]backend.Object, 6)
+	m.height = 8 // rows = 4
+	m.log = []string{"l0", "l1", "l2", "l3", "l4", "l5"}
+	out := m.View()
+	if !strings.Contains(out, "l5") || strings.Contains(out, "l0") {
+		t.Fatalf("log should be windowed to the last lines: %q", out)
 	}
 }
 

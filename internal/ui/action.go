@@ -9,17 +9,12 @@ import (
 	"github.com/tamcore/mtpx/internal/backend"
 )
 
-// deleteCmd removes every target from the device in the background.
-func (m Model) deleteCmd(targets []backend.Object) tea.Cmd {
-	bk, ctx := m.backend, m.ctx
+// deleteAtCmd deletes the queued file at index i and reports the result, so the
+// caller can stream progress one file at a time.
+func (m Model) deleteAtCmd(i int) tea.Cmd {
+	bk, ctx, obj := m.backend, m.ctx, m.queue[i]
 	return func() tea.Msg {
-		var failed int
-		for _, o := range targets {
-			if err := bk.Delete(ctx, o.ID); err != nil {
-				failed++
-			}
-		}
-		return deletedMsg{count: len(targets) - failed, failed: failed}
+		return deletedOneMsg{index: i, obj: obj, err: bk.Delete(ctx, obj.ID)}
 	}
 }
 

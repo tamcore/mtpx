@@ -22,15 +22,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.err = msg.err
 		return m, nil
-	case deletedMsg:
-		m.selected = map[uint32]bool{}
-		if msg.failed > 0 {
-			m.message = fmt.Sprintf("deleted %d, %d failed", msg.count, msg.failed)
-		} else {
-			m.message = fmt.Sprintf("deleted %d file(s)", msg.count)
-		}
-		m.loading = true
-		return m, m.loadCmd()
+	case deletedOneMsg:
+		return m.handleDeleted(msg)
 	case pulledMsg:
 		if msg.failed > 0 {
 			m.message = fmt.Sprintf("pulled %d, %d failed", msg.count, msg.failed)
@@ -39,15 +32,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
-		return m.handleKey(msg)
+		switch m.mode {
+		case modeConfirm:
+			return m.handleConfirm(msg)
+		case modeDeleting:
+			return m.handleDeleting(msg)
+		default:
+			return m.handleKey(msg)
+		}
 	}
 	return m, nil
 }
 
-func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.mode == modeConfirm {
-		return m.handleConfirm(msg)
+// handleDeleted records one file's result and either continues the queue or
+// finishes, dropping deleted files from the cached listing so no re-scan runs.
+func (m Model) handleDeleted(msg deletedOneMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.failed++
+		m.log = append(m.log, "failed  "+msg.obj.Path+": "+msg.err.Error())
+	} else {
+		m.done++
+		m.log = append(m.log, "deleted "+msg.obj.Path)
+		m.objects = removeObject(m.objects, msg.obj.ID)
 	}
+	if next := msg.index + 1; next < len(m.queue) {
+		return m, m.deleteAtCmd(next)
+	}
+	m.mode = modeBrowse
+	m.selected = map[uint32]bool{}
+	if m.failed > 0 {
+		m.message = fmt.Sprintf("deleted %d, %d failed", m.done, m.failed)
+	} else {
+		m.message = fmt.Sprintf("deleted %d file(s)", m.done)
+	}
+	m.queue = nil
+	return m.reconcile(), nil
+}
+
+func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	last := len(m.cols) - 1
 	switch msg.String() {
 	case "ctrl+c", "q":
@@ -99,18 +121,26 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
-		targets := m.pending
-		m.mode = modeBrowse
+		m.mode = modeDeleting
+		m.queue = m.pending
 		m.pending = nil
+		m.done, m.failed = 0, 0
+		m.log = nil
 		m.message = ""
-		m.loading = true
-		return m, m.deleteCmd(targets)
+		return m, m.deleteAtCmd(0)
 	case "ctrl+c":
 		return m, tea.Quit
 	case "n", "N", "esc":
 		m.mode = modeBrowse
 		m.pending = nil
 		m.message = "cancelled"
+	}
+	return m, nil
+}
+
+func (m Model) handleDeleting(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "ctrl+c" {
+		return m, tea.Quit
 	}
 	return m, nil
 }

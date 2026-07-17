@@ -13,6 +13,30 @@ import (
 	"github.com/tamcore/mtpx/internal/backend"
 )
 
+// loadedAt returns a model backed by bk, loaded, and focused at the given dirs.
+func loadedAt(t *testing.T, bk *backend.FakeBackend, dirs ...string) Model {
+	t.Helper()
+	next, _ := NewModel(context.Background(), bk, t.TempDir()).Update(objectsMsg{bk.Objects})
+	m := next.(Model)
+	cols := []column{{dir: ""}}
+	for _, d := range dirs {
+		cols = append(cols, column{dir: d})
+	}
+	m.cols = cols
+	return m
+}
+
+// drainDelete presses "y" to start deleting, then runs the streamed commands to
+// completion, returning the final model.
+func drainDelete(t *testing.T, m Model) Model {
+	t.Helper()
+	m, cmd := update(t, m, runes("y"))
+	for cmd != nil {
+		m, cmd = update(t, m, cmd())
+	}
+	return m
+}
+
 func TestTargetsSelected(t *testing.T) {
 	m := loadedModel(t)
 	m.selected = map[uint32]bool{3: true, 4: true}
@@ -30,7 +54,7 @@ func TestTargetsFocusedFile(t *testing.T) {
 }
 
 func TestTargetsNone(t *testing.T) {
-	if tg := loadedModel(t).targets(); tg != nil { // focus on a directory
+	if tg := loadedModel(t).targets(); tg != nil {
 		t.Fatalf("targets = %+v, want nil", tg)
 	}
 }
@@ -44,27 +68,63 @@ func TestDeletePromptsConfirm(t *testing.T) {
 }
 
 func TestDeleteNoTargets(t *testing.T) {
-	m, _ := update(t, loadedModel(t), runes("d")) // focus on a directory
+	m, _ := update(t, loadedModel(t), runes("d"))
 	if m.mode != modeBrowse || !strings.Contains(m.message, "no files") {
 		t.Fatalf("mode=%v msg=%q", m.mode, m.message)
 	}
 }
 
-func TestConfirmYesDeletes(t *testing.T) {
-	bk := &backend.FakeBackend{Objects: sampleObjects()}
-	next, _ := NewModel(context.Background(), bk, "").Update(objectsMsg{sampleObjects()})
-	m := next.(Model)
-	m.cols = []column{{dir: ""}, {dir: "GARMIN"}, {dir: "GARMIN/Activity"}}
+func TestConfirmYesStartsDeleting(t *testing.T) {
+	m := atPath(t, "GARMIN", "GARMIN/Activity")
 	m, _ = update(t, m, runes("d"))
 	m, cmd := update(t, m, runes("y"))
-	if m.mode != modeBrowse || !m.loading || cmd == nil {
-		t.Fatalf("mode=%v loading=%v cmd=%v", m.mode, m.loading, cmd)
+	if m.mode != modeDeleting || cmd == nil {
+		t.Fatalf("mode=%v cmd=%v", m.mode, cmd)
 	}
-	if dm, ok := cmd().(deletedMsg); !ok || dm.count != 1 {
-		t.Fatalf("deletedMsg = %+v ok=%v", dm, ok)
+	if _, ok := cmd().(deletedOneMsg); !ok {
+		t.Fatalf("first command = %T, want deletedOneMsg", cmd())
 	}
-	if len(bk.Deleted) != 1 || bk.Deleted[0] != 3 {
+}
+
+func TestDeleteStreamsToCompletion(t *testing.T) {
+	bk := &backend.FakeBackend{Objects: sampleObjects()}
+	m := loadedAt(t, bk, "GARMIN", "GARMIN/Activity")
+	m = m.toggle(3)
+	m = m.toggle(4)
+	m, _ = update(t, m, runes("d"))
+	m = drainDelete(t, m)
+
+	if m.mode != modeBrowse || !strings.Contains(m.message, "deleted 2 file(s)") {
+		t.Fatalf("mode=%v msg=%q", m.mode, m.message)
+	}
+	if len(bk.Deleted) != 2 {
 		t.Fatalf("backend deleted %v", bk.Deleted)
+	}
+	if len(m.log) != 2 {
+		t.Fatalf("log = %v", m.log)
+	}
+	for _, o := range m.objects {
+		if o.ID == 3 || o.ID == 4 {
+			t.Fatalf("deleted object still cached: %+v", o)
+		}
+	}
+	if len(m.selected) != 0 {
+		t.Fatal("selection should clear")
+	}
+}
+
+func TestDeleteStreamsFailure(t *testing.T) {
+	bk := &backend.FakeBackend{Objects: sampleObjects(), DeleteErr: errors.New("busy")}
+	m := loadedAt(t, bk, "GARMIN", "GARMIN/Activity")
+	m = m.toggle(3)
+	m, _ = update(t, m, runes("d"))
+	m = drainDelete(t, m)
+
+	if !strings.Contains(m.message, "1 failed") {
+		t.Fatalf("msg = %q", m.message)
+	}
+	if len(m.log) != 1 || !strings.Contains(m.log[0], "failed") {
+		t.Fatalf("log = %v", m.log)
 	}
 }
 
@@ -106,27 +166,31 @@ func TestConfirmOtherKeyStays(t *testing.T) {
 	}
 }
 
-func TestDeletedMsgSuccess(t *testing.T) {
-	m, _ := update(t, loadedModel(t), deletedMsg{count: 2, failed: 0})
-	if !strings.Contains(m.message, "deleted 2 file(s)") || !m.loading {
-		t.Fatalf("msg=%q loading=%v", m.message, m.loading)
+func TestDeletingCtrlCQuits(t *testing.T) {
+	m := loadedModel(t)
+	m.mode = modeDeleting
+	m.queue = []backend.Object{{ID: 1}}
+	_, cmd := update(t, m, tea.KeyMsg{Type: tea.KeyCtrlC})
+	if cmd == nil {
+		t.Fatal("ctrl+c should quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatal("expected QuitMsg")
 	}
 }
 
-func TestDeletedMsgFailures(t *testing.T) {
+func TestDeletingIgnoresOtherKeys(t *testing.T) {
 	m := loadedModel(t)
-	m.selected = map[uint32]bool{3: true}
-	m, _ = update(t, m, deletedMsg{count: 2, failed: 1})
-	if !strings.Contains(m.message, "1 failed") || len(m.selected) != 0 {
-		t.Fatalf("msg=%q selected=%d", m.message, len(m.selected))
+	m.mode = modeDeleting
+	_, cmd := update(t, m, runes("x"))
+	if cmd != nil {
+		t.Fatal("keys other than ctrl+c should be ignored while deleting")
 	}
 }
 
 func TestPullCurrent(t *testing.T) {
 	bk := &backend.FakeBackend{Objects: sampleObjects(), Contents: map[uint32][]byte{3: []byte("abc")}}
-	next, _ := NewModel(context.Background(), bk, t.TempDir()).Update(objectsMsg{sampleObjects()})
-	m := next.(Model)
-	m.cols = []column{{dir: ""}, {dir: "GARMIN"}, {dir: "GARMIN/Activity"}}
+	m := loadedAt(t, bk, "GARMIN", "GARMIN/Activity")
 	m2, cmd := update(t, m, runes("c"))
 	if cmd == nil || m2.message != "pulling…" {
 		t.Fatalf("msg=%q cmd=%v", m2.message, cmd)
@@ -141,7 +205,7 @@ func TestPullCurrent(t *testing.T) {
 }
 
 func TestPullNoTargets(t *testing.T) {
-	m, cmd := update(t, loadedModel(t), runes("c")) // focus on a directory
+	m, cmd := update(t, loadedModel(t), runes("c"))
 	if cmd != nil || !strings.Contains(m.message, "no files") {
 		t.Fatalf("msg=%q cmd=%v", m.message, cmd)
 	}
@@ -182,14 +246,5 @@ func TestPullCmdMkdirError(t *testing.T) {
 	pm := m.pullCmd([]backend.Object{{ID: 3, Path: "GARMIN/Activity/a.fit"}})().(pulledMsg)
 	if pm.failed != 1 {
 		t.Fatalf("expected mkdir failure, got %+v", pm)
-	}
-}
-
-func TestDeleteCmdFailure(t *testing.T) {
-	bk := &backend.FakeBackend{DeleteErr: errors.New("busy"), Objects: []backend.Object{{ID: 3}}}
-	m := NewModel(context.Background(), bk, "")
-	dm := m.deleteCmd([]backend.Object{{ID: 3}})().(deletedMsg)
-	if dm.failed != 1 {
-		t.Fatalf("expected failure, got %+v", dm)
 	}
 }

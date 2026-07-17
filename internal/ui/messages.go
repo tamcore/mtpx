@@ -12,8 +12,12 @@ type objectsMsg struct{ objects []backend.Object }
 // errMsg carries an error from an asynchronous command.
 type errMsg struct{ err error }
 
-// deletedMsg reports how many files a delete action removed and how many failed.
-type deletedMsg struct{ count, failed int }
+// deletedOneMsg reports the result of deleting a single queued file.
+type deletedOneMsg struct {
+	index int
+	obj   backend.Object
+	err   error
+}
 
 // pulledMsg reports how many files a pull action copied and how many failed.
 type pulledMsg struct{ count, failed int }
