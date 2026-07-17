@@ -4,8 +4,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// headerRows is the number of lines rendered above the columns (title + blank).
-const headerRows = 2
+// headerRows is the mouse-Y offset of the first pane row. The view prints a
+// title and a blank line above the panes, but clicks land one row higher than
+// that implies, so the effective offset is one.
+const headerRows = 1
 
 // handleMouse handles wheel scrolling and left clicks while browsing.
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {

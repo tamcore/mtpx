@@ -62,7 +62,7 @@ func TestMouseIgnoresNonPress(t *testing.T) {
 
 func TestMouseClickActiveColumn(t *testing.T) {
 	m := mouseModel(t)               // root entries: GARMIN (0), Music (1)
-	m, _ = update(t, m, click(5, 3)) // column 0, row 1 -> Music
+	m, _ = update(t, m, click(5, 2)) // column 0, row 1 -> Music
 	if m.focused().cursor != 1 {
 		t.Fatalf("click should move cursor to row 1, got %d", m.focused().cursor)
 	}
@@ -70,7 +70,7 @@ func TestMouseClickActiveColumn(t *testing.T) {
 
 func TestMouseClickPreviewDescends(t *testing.T) {
 	m := mouseModel(t)                // root focused on GARMIN; preview shows GARMIN's children
-	m, _ = update(t, m, click(25, 2)) // preview column, row 0 -> Activity
+	m, _ = update(t, m, click(25, 1)) // preview column, row 0 -> Activity
 	if len(m.cols) != 2 || m.focused().dir != "GARMIN" || m.focused().cursor != 0 {
 		t.Fatalf("preview click should descend: cols=%d dir=%q", len(m.cols), m.focused().dir)
 	}
@@ -78,7 +78,7 @@ func TestMouseClickPreviewDescends(t *testing.T) {
 
 func TestMouseClickTrailColumnCollapses(t *testing.T) {
 	m := mouseModel(t, "GARMIN")     // cols: root, GARMIN
-	m, _ = update(t, m, click(5, 3)) // click root column (col 0), row 1 -> Music
+	m, _ = update(t, m, click(5, 2)) // click root column (col 0), row 1 -> Music
 	if len(m.cols) != 1 || m.focused().cursor != 1 {
 		t.Fatalf("clicking a trail column should collapse deeper panes: cols=%d cursor=%d", len(m.cols), m.focused().cursor)
 	}
